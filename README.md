@@ -28,7 +28,7 @@ administrator can install it so the user cannot remove it. That is a real gate.
 This repository is also a Claude Code plugin marketplace, so there is nothing to copy:
 
 ```bash
-claude plugin marketplace add Tileward-com/tileward-api
+claude plugin marketplace add Tileward-com/tileward-claude-plugin
 claude plugin install tileward-guard@tileward
 export TILEWARD_API_KEY=tw_live_...   # a key with a policy bound to it, see below
 ```
@@ -36,6 +36,14 @@ export TILEWARD_API_KEY=tw_live_...   # a key with a policy bound to it, see bel
 That is a guardrail you chose and can `/plugin uninstall` at any time. It is not a control over
 anyone, including yourself. To govern somebody else, read the next section: **a plugin the governed
 party can uninstall is a suggestion.**
+
+> **This repository is private today.** Claude Code clones the marketplace with the machine's own
+> git credentials, so `marketplace add` only works where those credentials can read this repo. That
+> is fine inside Tileward, and it does not work for a customer's fleet: their machines cannot read
+> it, and the clone fails before any of the below matters. Nothing here is secret (the policy lives
+> on the key, server-side; this is a thin client), so making the repo public is what unblocks
+> external use. For air-gapped or CI fleets, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` instead and
+> nothing is cloned at runtime.
 
 ## Install (an organization, enforced)
 
@@ -48,7 +56,7 @@ command-line arguments, local, project, and user settings.
 ```json
 {
   "extraKnownMarketplaces": {
-    "tileward": { "source": { "source": "github", "repo": "Tileward-com/tileward-api" } }
+    "tileward": { "source": { "source": "github", "repo": "Tileward-com/tileward-claude-plugin" } }
   },
   "enabledPlugins": { "tileward-guard@tileward": true },
   "allowManagedHooksOnly": true,
