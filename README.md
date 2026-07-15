@@ -148,6 +148,43 @@ installed. Bind a policy first.
 | `TILEWARD_API` | `https://api.tileward.com/v1/guard` | Endpoint. |
 | `TILEWARD_TIMEOUT` | `5` | Seconds. Keep it well under the hook's own `timeout`. |
 | `TILEWARD_FAIL_OPEN` | `0` | `1` allows prompts when the guard cannot be reached. |
+| `TILEWARD_ACTOR` | the OS username | Who to attribute this machine's checks to in the audit report. `-` sends nothing. Read the section below before relying on it. |
+
+## Who was refused: `X-Tileward-Actor`
+
+A shared key tells you an organization was refused. It does not tell you who. The hook sends
+`X-Tileward-Actor` (the OS username by default, `TILEWARD_ACTOR` to override), and it lands in its
+own column in the audit report and the export.
+
+It is a **claim, not an attestation**, and that governs what you may do with it. The hook runs on the
+governed person's machine, under their environment, so anyone who can set `TILEWARD_ACTOR` can type
+a colleague's name into it. It is an attribution aid for whoever reads the report. It is not
+evidence, and it should not be the basis of a conversation with an employee.
+
+**If you need identity that holds, issue one key per person.** Only an admin can mint a key, the
+audit already records `key_id` on every row, and revoking one person costs one click. That works
+today with no header at all. The actor header earns its place when one key legitimately serves many
+people, such as a shared gateway.
+
+**Prefer an internal id to an email.** The audit is exportable, and `u-8842` identifies a person
+against your own directory just as well as their address does, without turning the report into a
+file of personal data.
+
+It is deliberately a **separate header from `X-Request-Id`**, which the hook already sends. A request
+id identifies one submission; the audit counts rows sharing one so a re-submitted id shows up as
+`×N`. A person recurs on every prompt they ever send, so putting them in that field would badge
+their entire history as duplicate submissions and destroy the duplicate check to gain identity.
+Two questions, two headers.
+
+For option A (`type: "http"`), pass it the same way as the key:
+
+```json
+"headers": {
+  "Authorization": "Bearer $TILEWARD_API_KEY",
+  "X-Tileward-Actor": "$TILEWARD_ACTOR"
+},
+"allowedEnvVars": ["TILEWARD_API_KEY", "TILEWARD_ACTOR"]
+```
 
 ## Fail closed, and the exact limit of that promise
 
@@ -202,9 +239,9 @@ Each check writes one row, keyed by `X-Request-Id: cc-<prompt_id>`, so a refusal
 next to the prompt that caused it:
 
 ```
-cc-p-129161755  client=True  rejected  reason=guard:commodity_trading  tok=8   cost=80
-cc-p-252122787  client=True  rejected  reason=guard:options_pricing    tok=14  cost=140
-cc-p-233942517  client=True  allowed                                   tok=9   cost=90
+cc-p-129161755  client=True  actor=u-8842  rejected  reason=guard:commodity_trading  tok=8   cost=80
+cc-p-252122787  client=True  actor=u-8842  rejected  reason=guard:options_pricing    tok=14  cost=140
+cc-p-233942517  client=True  actor=u-1207  allowed                                   tok=9   cost=90
 ```
 
 The response the hook reads is only the decision and the cost. The tile that refused a prompt is

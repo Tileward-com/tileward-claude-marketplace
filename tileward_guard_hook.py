@@ -53,9 +53,12 @@ Config (environment):
     TILEWARD_API        default https://api.tileward.com/v1/guard
     TILEWARD_TIMEOUT    seconds, default 5. Keep it well under the hook's own timeout.
     TILEWARD_FAIL_OPEN  1 = allow when the guard is unreachable. Default 0 = block.
+    TILEWARD_ACTOR      who this machine's prompts are attributed to in the audit report. Defaults
+                        to the OS username; `-` sends nothing. It is a CLAIM, not proof: see below.
 """
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import sys
@@ -66,6 +69,31 @@ API = os.environ.get("TILEWARD_API", "https://api.tileward.com/v1/guard")
 KEY = os.environ.get("TILEWARD_API_KEY", "").strip()
 TIMEOUT = float(os.environ.get("TILEWARD_TIMEOUT", "5"))
 FAIL_OPEN = os.environ.get("TILEWARD_FAIL_OPEN", "0") == "1"
+
+
+def _actor() -> str:
+    """WHO this check is attributed to, sent as X-Tileward-Actor and stored in the audit row.
+
+    THIS IS A CLAIM, NOT AN ATTESTATION, and the distinction decides what you may do with it. This
+    process runs on the governed person's own machine, under their own environment, so anyone who
+    can set TILEWARD_ACTOR can type a colleague's name into it. Read it as an attribution aid for
+    whoever reads the report, never as evidence in a disciplinary process. If you need identity that
+    holds up, issue one API key per person: only an admin can mint keys, and the audit records
+    key_id on every row without any of this.
+
+    Defaults to the OS username because that is the useful answer on a managed laptop. Set
+    TILEWARD_ACTOR to your own slug or internal id to override, or to `-` to send nothing. Prefer an
+    opaque id over an email so the audit does not accumulate personal data it has no use for.
+    """
+    a = os.environ.get("TILEWARD_ACTOR", "").strip()
+    if a == "-":
+        return ""
+    if not a:
+        try:
+            a = getpass.getuser()
+        except Exception:
+            return ""  # no username to be had (no passwd entry, no env); attribution is optional
+    return "".join(c for c in a if 0x20 <= ord(c) < 0x7f)[:128]  # headers carry printable ASCII
 
 # Fields the user's text might arrive under. `prompt` is the documented one; the rest are
 # defensive. If NONE of them yield text we block rather than guess, because a guard that reads the
@@ -138,6 +166,13 @@ def main() -> None:
     rid = event.get("prompt_id") or event.get("session_id")
     if rid:
         req.add_header("X-Request-Id", f"cc-{rid}"[:128])
+    # WHO, in a separate header from WHICH REQUEST, on purpose. It is tempting to put the person in
+    # X-Request-Id since it is already here, but the audit counts rows sharing a request id to
+    # surface re-submissions (request_id_seen > 1). A person repeats on every prompt they ever send,
+    # so that would badge their entire history as duplicates and destroy the check to gain identity.
+    actor = _actor()
+    if actor:
+        req.add_header("X-Tileward-Actor", actor)
 
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
