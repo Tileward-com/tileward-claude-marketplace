@@ -59,6 +59,43 @@ Managed settings, which a user cannot override. macOS
 `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json`,
 or push it from the claude.ai admin console.
 
+`allowManagedHooksOnly` is what makes either option below enforcement rather than a suggestion: with
+it set, hooks from the user's own or the project's settings are ignored, so a developer cannot
+unhook themselves.
+
+### Option A: no script anywhere (`type: "http"`)
+
+Point Claude Code straight at `/v1/guard/hook`, which speaks the hook's own contract. Nothing to
+install, nothing to keep updated, nothing that can be deleted from a laptop.
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "https://api.tileward.com/v1/guard/hook",
+            "headers": { "Authorization": "Bearer $TILEWARD_API_KEY" },
+            "allowedEnvVars": ["TILEWARD_API_KEY"],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "allowManagedHooksOnly": true
+}
+```
+
+Do NOT point this at `/v1/guard`: that endpoint answers `{"result": {"allowed": false}}`, and Claude
+Code blocks only on a body saying `{"decision": "block"}`, so it would allow every prompt while
+looking installed. `/v1/guard/hook` exists precisely for this.
+
+### Option B: the local script (`type: "command"`)
+
 ```json
 {
   "hooks": {
@@ -75,8 +112,23 @@ or push it from the claude.ai admin console.
 }
 ```
 
-`allowManagedHooksOnly` is what makes this enforcement rather than a suggestion: with it set, hooks
-from the user's own or the project's settings are ignored, so a developer cannot unhook themselves.
+### Which one
+
+The difference is what happens when Tileward cannot be reached at all.
+
+| | A: HTTP endpoint | B: local script |
+| --- | --- | --- |
+| Anything to install | nothing | the script, on every machine |
+| Off-policy prompt | blocked | blocked |
+| Bad or revoked key | blocked | blocked |
+| Empty balance | blocked | blocked |
+| **Tileward unreachable** (network, DNS, our outage) | **prompt runs** | **blocked** |
+| Script deleted or made non-executable | not applicable | prompt runs |
+
+Claude Code fails open when it cannot reach an HTTP hook, and no response can change that because
+nothing answers. The script is a local process, so it can refuse on its own. Option A is easier to
+run; option B is the one that holds when we are down. Pick with that sentence in mind, not the
+install cost.
 
 ## The policy lives on the key
 
@@ -135,8 +187,8 @@ that property, or it will quietly stop gating while still looking installed.
 **Do not point a `type: "http"` hook straight at `/v1/guard`.** Claude Code blocks only on a 2xx
 response whose body says `{"decision": "block"}`. `/v1/guard` answers
 `{"cost_micros": N, "result": {"allowed": false}}`, so Claude Code would read 2xx, find no
-`decision` field, and allow every prompt while looking installed. Non-2xx fails open as well. An
-HTTP hook needs an endpoint that speaks the hook's own contract. Until that exists, use this script.
+`decision` field, and allow every prompt while looking installed. Non-2xx fails open as well. Use
+`/v1/guard/hook` (option A above), which speaks the hook's contract, or this script.
 
 **`api.tileward.com` is behind Cloudflare, which bans urllib's default agent** (403, Cloudflare error
 1010, "banned based on your browser's signature"). This script sends its own `User-Agent` for that
