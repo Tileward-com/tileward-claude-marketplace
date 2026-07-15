@@ -25,43 +25,64 @@ administrator can install it so the user cannot remove it. That is a real gate.
 
 ## Install (one developer)
 
+This repository is also a Claude Code plugin marketplace, so there is nothing to copy:
+
 ```bash
+claude plugin marketplace add Tileward-com/tileward-api
+claude plugin install tileward-guard@tileward
 export TILEWARD_API_KEY=tw_live_...   # a key with a policy bound to it, see below
 ```
 
-`.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/absolute/path/to/tileward_guard_hook.py",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-`UserPromptSubmit` takes no matchers: it fires on every prompt, which is the point.
+That is a guardrail you chose and can `/plugin uninstall` at any time. It is not a control over
+anyone, including yourself. To govern somebody else, read the next section: **a plugin the governed
+party can uninstall is a suggestion.**
 
 ## Install (an organization, enforced)
 
-Managed settings, which a user cannot override. macOS
+Managed settings, which a user cannot override: macOS
 `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux
 `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json`,
-or push it from the claude.ai admin console.
+or pushed from the claude.ai admin console. Settings precedence puts managed at the top, above
+command-line arguments, local, project, and user settings.
 
-`allowManagedHooksOnly` is what makes either option below enforcement rather than a suggestion: with
-it set, hooks from the user's own or the project's settings are ignored, so a developer cannot
-unhook themselves.
+```json
+{
+  "extraKnownMarketplaces": {
+    "tileward": { "source": { "source": "github", "repo": "Tileward-com/tileward-api" } }
+  },
+  "enabledPlugins": { "tileward-guard@tileward": true },
+  "allowManagedHooksOnly": true,
+  "strictKnownMarketplaces": true,
+  "disableSideloadFlags": true
+}
+```
+
+Each line closes a specific door, and dropping any one of them turns enforcement back into a
+suggestion:
+
+- **`enabledPlugins`** force-enables the plugin. Enabled from managed settings, it cannot be
+  uninstalled or disabled by the user.
+- **`allowManagedHooksOnly`** loads *only* managed hooks, SDK hooks, and hooks from plugins
+  force-enabled in managed `enabledPlugins`. Every user, project, and other-plugin hook is blocked.
+  This is what stops a developer from unhooking themselves, and it is also why the plugin has to be
+  force-enabled here rather than merely installed.
+- **`strictKnownMarketplaces`** stops users adding their own marketplaces.
+- **`disableSideloadFlags`** rejects `--plugin-dir`, `--plugin-url`, `--agents`, and `--mcp-config`,
+  which would otherwise bypass the previous line for a single run.
+
+For container and CI images, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` so nothing is cloned at
+runtime.
+
+### Why the plugin rather than a copied script
+
+An earlier version of this guide told administrators to deploy `tileward_guard_hook.py` to every
+machine and monitor that it still existed, because Claude Code fails open when a hook's command is
+missing: delete the file and prompts flow. The plugin makes delivery, versioning, and updates the
+platform's problem. You ship a marketplace commit instead of re-copying a fleet.
+
+The script still lives in this repo, at
+`plugins/tileward-guard/hooks/tileward_guard_hook.py`, and still runs standalone if you would
+rather wire it up yourself with a `type: "command"` hook pointing at an absolute path.
 
 ### Option A: no script anywhere (`type: "http"`)
 
@@ -94,7 +115,13 @@ Do NOT point this at `/v1/guard`: that endpoint answers `{"result": {"allowed": 
 Code blocks only on a body saying `{"decision": "block"}`, so it would allow every prompt while
 looking installed. `/v1/guard/hook` exists precisely for this.
 
-### Option B: the local script (`type: "command"`)
+### Option B: the plugin (recommended)
+
+The `enabledPlugins` block shown above. The plugin carries the local script and registers it as a
+`UserPromptSubmit` hook, so this is option A's "nothing to deploy" with a local process that can
+still refuse when we are unreachable.
+
+If you would rather not use the plugin, the same script works wired by hand:
 
 ```json
 {
@@ -112,23 +139,25 @@ looking installed. `/v1/guard/hook` exists precisely for this.
 }
 ```
 
+That is the variant whose file you must deploy and monitor yourself.
+
 ### Which one
 
 The difference is what happens when Tileward cannot be reached at all.
 
-| | A: HTTP endpoint | B: local script |
-| --- | --- | --- |
-| Anything to install | nothing | the script, on every machine |
-| Off-policy prompt | blocked | blocked |
-| Bad or revoked key | blocked | blocked |
-| Empty balance | blocked | blocked |
-| **Tileward unreachable** (network, DNS, our outage) | **prompt runs** | **blocked** |
-| Script deleted or made non-executable | not applicable | prompt runs |
+| | A: HTTP endpoint | B: plugin | B-manual: copied script |
+| --- | --- | --- | --- |
+| Anything to deploy | nothing | nothing | the script, on every machine |
+| Off-policy prompt | blocked | blocked | blocked |
+| Bad or revoked key | blocked | blocked | blocked |
+| Empty balance | blocked | blocked | blocked |
+| **Tileward unreachable** (network, DNS, our outage) | **prompt runs** | **blocked** | **blocked** |
+| Script deleted or made non-executable | not applicable | plugin cache is managed | prompt runs |
 
-Claude Code fails open when it cannot reach an HTTP hook, and no response can change that because
-nothing answers. The script is a local process, so it can refuse on its own. Option A is easier to
-run; option B is the one that holds when we are down. Pick with that sentence in mind, not the
-install cost.
+Claude Code fails open when it cannot reach an HTTP hook, and no response can change that, because
+nothing is there to answer. A local process can refuse on its own. The plugin gets you that without
+a deployment to babysit, which is why it is the recommendation. Option A is still the least moving
+parts if you would rather accept the outage behaviour than run any local code.
 
 ## The policy lives on the key
 
@@ -239,10 +268,16 @@ Each check writes one row, keyed by `X-Request-Id: cc-<prompt_id>`, so a refusal
 next to the prompt that caused it:
 
 ```
-cc-p-129161755  client=True  actor=u-8842  rejected  reason=guard:commodity_trading  tok=8   cost=80
-cc-p-252122787  client=True  actor=u-8842  rejected  reason=guard:options_pricing    tok=14  cost=140
-cc-p-233942517  client=True  actor=u-1207  allowed                                   tok=9   cost=90
+cc-e7e2ce9d-b1c3-4e4e-8c37-e3feab939c52  client=True  actor=u-8842  rejected  reason=guard:options_pricing  tok=14  cost=140
+cc-35bd27ff-2b2f-4e2f-be60-3ce7fc13701a  client=True  actor=u-8842  allowed                                 tok=9   cost=90
 ```
+
+`prompt_id` is a UUID unique to one submission, and it requires **Claude Code 2.1.196 or later**. On
+an older version the field is absent, the hook sends no request id, and Tileward mints its own
+`req_...` per check. Those rows are still complete and still per-check; you just cannot trace one
+back to a specific prompt. The hook deliberately does not fall back to `session_id`, which is shared
+by every prompt in a session and would make the report show a whole session as one request
+re-submitted `×N`.
 
 The response the hook reads is only the decision and the cost. The tile that refused a prompt is
 recorded in the audit trail, not returned to the caller. Metering is per token read, so a check is
@@ -253,11 +288,13 @@ export it as CSV or JSON.
 
 ```bash
 export TILEWARD_API_KEY=tw_live_...
+H=plugins/tileward-guard/hooks/tileward_guard_hook.py
+
 echo '{"hook_event_name":"UserPromptSubmit","prompt_id":"p1","prompt":"hello"}' \
-  | ./tileward_guard_hook.py; echo "exit=$?"      # expect 0
+  | $H; echo "exit=$?"      # expect 0
 
 echo '{"hook_event_name":"UserPromptSubmit","prompt_id":"p2","prompt":"<something your policy blocks>"}' \
-  | ./tileward_guard_hook.py; echo "exit=$?"      # expect 2
+  | $H; echo "exit=$?"      # expect 2
 ```
 
 Claude Code does nothing more than this: it pipes that JSON to the script and reads the exit code.

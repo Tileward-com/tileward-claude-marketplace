@@ -1,0 +1,15 @@
+{
+  "name": "tileward",
+  "description": "Governance for AI coding tools: refuse off-policy prompts before the model sees them, and keep an audit trail of every decision.",
+  "owner": {
+    "name": "Tileward",
+    "url": "https://tileward.com"
+  },
+  "plugins": [
+    {
+      "name": "tileward-guard",
+      "source": "./plugins/tileward-guard",
+      "description": "Refuse off-policy prompts before the model sees them, using the policy bound to your Tileward API key."
+    }
+  ]
+}

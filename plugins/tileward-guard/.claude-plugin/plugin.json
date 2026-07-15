@@ -1,0 +1,20 @@
+{
+  "name": "tileward-guard",
+  "displayName": "Tileward Guard",
+  "version": "1.0.0",
+  "description": "Refuse off-policy prompts before the model sees them, using the policy bound to your Tileward API key. The decision is made out of band, so the model is never asked to police itself.",
+  "author": {
+    "name": "Tileward",
+    "url": "https://tileward.com"
+  },
+  "homepage": "https://tileward.com",
+  "repository": "https://github.com/Tileward-com/tileward-api",
+  "license": "MIT",
+  "keywords": [
+    "governance",
+    "policy",
+    "guardrails",
+    "compliance",
+    "audit"
+  ]
+}

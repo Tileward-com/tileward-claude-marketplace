@@ -41,11 +41,16 @@ EXIT CODES ARE THE WHOLE CONTRACT, AND THEY ARE A TRAP:
           the bare `except` at the bottom exists for exactly that reason.
 
 WHY NOT AN HTTP HOOK POINTED STRAIGHT AT THE GUARD? Claude Code supports `type: "http"`, which
-would need no local script. But it blocks only on a 2xx response whose body says
-{"decision": "block"}. /v1/guard answers {"cost_micros": N, "result": {"allowed": false}}, so
-Claude Code would read 2xx, find no `decision`, and ALLOW every prompt while looking installed.
-Non-2xx fails open too. An HTTP hook needs a Tileward endpoint that speaks the hook's own contract;
-until that exists, use this script.
+needs no local script. But it blocks only on a 2xx response whose body says {"decision": "block"}.
+/v1/guard answers {"cost_micros": N, "result": {"allowed": false}}, so Claude Code would read 2xx,
+find no `decision`, and ALLOW every prompt while looking installed. Non-2xx fails open too.
+/v1/guard/hook speaks the hook's contract and is the supported HTTP option; point at that, never at
+/v1/guard. The reason to run this script instead is that an HTTP hook cannot block when Claude Code
+cannot reach us at all, and a local process can.
+
+This script ships as the `tileward-guard` plugin's UserPromptSubmit hook, which is how it should be
+installed: the plugin handles delivery and updates, and an admin can force-enable it through managed
+settings so the governed user cannot remove it. It still runs standalone. See README.md.
 
 Config (environment):
     TILEWARD_API_KEY    required. The key whose BOUND POLICY decides. A key with no policy blocks
@@ -159,13 +164,18 @@ def main() -> None:
     # that means every prompt in the org is blocked, while the error blames the API key. Verified:
     # Python-urllib/3.13 -> 403, tileward-guard-hook/1.0 -> 200, same key, same body.
     req.add_header("User-Agent", "tileward-guard-hook/1.0")
-    # Tie this decision to the exact prompt in Tileward's audit trail. prompt_id is unique per
-    # submission; session_id repeats for every prompt in a session, and a request id that repeats
-    # is one the audit report will show as a duplicate submission (request_id_seen > 1) rather than
-    # as distinct checks. Fall back to session_id only if prompt_id is absent.
-    rid = event.get("prompt_id") or event.get("session_id")
-    if rid:
-        req.add_header("X-Request-Id", f"cc-{rid}"[:128])
+    # Tie this decision to the exact prompt in Tileward's audit trail. prompt_id is a UUID unique
+    # per submission (Claude Code 2.1.196+, and absent until the first user input).
+    #
+    # There is deliberately NO session_id fallback. session_id is the same string for every prompt
+    # in a session, and Tileward's audit counts rows sharing a request id to surface re-submissions,
+    # so sending it would badge every prompt of a session as a duplicate of the others and quietly
+    # ruin the duplicate check for the whole account. When prompt_id is absent we send no id at all
+    # and let Tileward mint a unique one: an id we cannot trace back to a prompt is worth more than
+    # an id that lies. Upgrade to 2.1.196+ to get the traceable one.
+    pid = event.get("prompt_id")
+    if pid:
+        req.add_header("X-Request-Id", f"cc-{pid}"[:128])
     # WHO, in a separate header from WHICH REQUEST, on purpose. It is tempting to put the person in
     # X-Request-Id since it is already here, but the audit counts rows sharing a request id to
     # surface re-submissions (request_id_seen > 1). A person repeats on every prompt they ever send,
