@@ -23,6 +23,31 @@ call mandatory. A guard shipped as an MCP tool is a conscience, not a control, a
 A hook is different. Claude Code runs it before the model, reads its exit code, and an
 administrator can install it so the user cannot remove it. That is a real gate.
 
+## Which path you can actually use today
+
+**This repository is private.** Claude Code clones a marketplace with the machine's own git
+credentials, so every `marketplace add` and `extraKnownMarketplaces` line below works only where
+those credentials can read this repo — inside Tileward, and nowhere else. A customer's fleet fails
+at the clone, before any of the settings below get a chance to matter.
+
+| | Works while this repo is private | Fails when Tileward is unreachable |
+| --- | --- | --- |
+| **A** — `type: "http"` at `/v1/guard/hook` | **yes, for anyone** | **prompt runs** (Claude Code fails open on an unreachable HTTP hook) |
+| **B** — this plugin | Tileward machines only | blocked |
+| **B-manual** — the copied script | yes, but you deploy and monitor the file | blocked |
+
+So there is no path that is both externally installable *and* fail-closed on an outage. That is the
+whole cost of the repo being private, and it is not a security cost: nothing here is secret. The
+policy lives server-side on the API key and this is a thin client. Making the repository public is
+what removes the trade-off, and it is the recommendation
+([#226](https://github.com/ananthasharma/tileward.com/issues/226)).
+
+**Until then:** if you are outside Tileward, use **option A** and accept that an outage lets prompts
+through. If a prompt must never run unchecked, use **B-manual** — copy
+`plugins/tileward-guard/hooks/tileward_guard_hook.py` out of this repo and wire it by absolute path.
+That needs no marketplace and no clone at runtime; you own the deployment. For air-gapped or CI
+fleets, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` and nothing is cloned at runtime either.
+
 ## Install (one developer)
 
 This repository is also a Claude Code plugin marketplace, so there is nothing to copy:
@@ -37,13 +62,9 @@ That is a guardrail you chose and can `/plugin uninstall` at any time. It is not
 anyone, including yourself. To govern somebody else, read the next section: **a plugin the governed
 party can uninstall is a suggestion.**
 
-> **This repository is private today.** Claude Code clones the marketplace with the machine's own
-> git credentials, so `marketplace add` only works where those credentials can read this repo. That
-> is fine inside Tileward, and it does not work for a customer's fleet: their machines cannot read
-> it, and the clone fails before any of the below matters. Nothing here is secret (the policy lives
-> on the key, server-side; this is a thin client), so making the repo public is what unblocks
-> external use. For air-gapped or CI fleets, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` instead and
-> nothing is cloned at runtime.
+> **This clone needs credentials for a private repo.** It succeeds inside Tileward and fails
+> everywhere else — see [Which path you can actually use
+> today](#which-path-you-can-actually-use-today).
 
 ## Install (an organization, enforced)
 
@@ -52,6 +73,12 @@ Managed settings, which a user cannot override: macOS
 `/etc/claude-code/managed-settings.json`, Windows `C:\Program Files\ClaudeCode\managed-settings.json`,
 or pushed from the claude.ai admin console. Settings precedence puts managed at the top, above
 command-line arguments, local, project, and user settings.
+
+> **This block needs the repository to be readable by every governed machine.** It is private
+> today, so on a customer fleet the marketplace clone fails and the plugin never loads — and because
+> a missing hook is a hook that does not run, the result is an organization that looks governed and
+> is not. Verify on one machine before rolling it out. See [Which path you can actually use
+> today](#which-path-you-can-actually-use-today).
 
 ```json
 {
@@ -166,6 +193,10 @@ Claude Code fails open when it cannot reach an HTTP hook, and no response can ch
 nothing is there to answer. A local process can refuse on its own. The plugin gets you that without
 a deployment to babysit, which is why it is the recommendation. Option A is still the least moving
 parts if you would rather accept the outage behaviour than run any local code.
+
+**On availability, not merit:** B is the recommendation and is currently reachable only from
+machines that can read this private repository. If that is not you, the honest ordering is A for
+least friction, B-manual when the outage behaviour is unacceptable, and B once the repo is public.
 
 ## The policy lives on the key
 
