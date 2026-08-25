@@ -1,0 +1,21 @@
+{
+  "name": "tileward-context",
+  "displayName": "Tileward Context",
+  "version": "1.0.0",
+  "description": "Recall only the relevant slice of a long conversation instead of resending the whole transcript, so context stays small and each turn costs less. Hosted, no local server to run.",
+  "author": {
+    "name": "Tileward",
+    "url": "https://tileward.com"
+  },
+  "homepage": "https://tileward.com",
+  "repository": "https://github.com/Tileward-com/tileward-claude-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "context",
+    "memory",
+    "recall",
+    "mcp",
+    "token-savings"
+  ],
+  "mcpServers": "./.mcp.json"
+}

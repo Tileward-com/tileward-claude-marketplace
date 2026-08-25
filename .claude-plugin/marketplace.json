@@ -1,0 +1,20 @@
+{
+  "name": "tileward",
+  "description": "Tileward for AI coding tools: refuse off-policy prompts before the model sees them, and keep long conversations small by recalling only the relevant slice.",
+  "owner": {
+    "name": "Tileward",
+    "url": "https://tileward.com"
+  },
+  "plugins": [
+    {
+      "name": "tileward-guard",
+      "source": "./plugins/tileward-guard",
+      "description": "Refuse off-policy prompts before the model sees them, using the policy bound to your Tileward API key."
+    },
+    {
+      "name": "tileward-context",
+      "source": "./plugins/tileward-context",
+      "description": "Recall only the relevant slice of a long conversation instead of resending the whole transcript. Hosted MCP server, no local install."
+    }
+  ]
+}

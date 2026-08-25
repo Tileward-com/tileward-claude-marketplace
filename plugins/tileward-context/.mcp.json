@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tileward-context": {
+      "type": "http",
+      "url": "${TILEWARD_CONTEXT_URL:-https://context.tileward.com}",
+      "headers": {
+        "Authorization": "Bearer ${TILEWARD_API_KEY}"
+      },
+      "timeout": 120000
+    }
+  }
+}
