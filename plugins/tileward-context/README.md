@@ -32,15 +32,12 @@ export TILEWARD_API_KEY=tw_live_...
 The **same key** as `tileward-guard` — one key, both plugins. Restart Claude Code, then `/mcp`
 should list `tileward-context` with its tools.
 
-> **This clone needs credentials for a private repo, until this repository is public.** As with
-> `tileward-guard`, the marketplace clone succeeds inside Tileward and fails everywhere else today.
-> See the repository README's
-> [Which path you can actually use today](../../README.md#which-path-you-can-actually-use-today).
-> The interim workaround is cheaper here than it is for the guard: this plugin is only an HTTP
-> endpoint plus a bearer token, so anyone can wire it directly with
-> `claude mcp add --transport http tileward-context https://context.tileward.com --header "Authorization: Bearer $TILEWARD_API_KEY"`.
-> There is no fail-closed property to lose by doing that — recall is a capability, not a gate — so
-> the only things the plugin adds are packaging and updates.
+> **You do not need this plugin to use Tileward Context.** It is an HTTP endpoint plus a bearer
+> token, so
+> `claude mcp add --transport http tileward-context https://context.tileward.com --header "Authorization: Bearer $TILEWARD_API_KEY"`
+> gets you the same tools with nothing installed. Unlike `tileward-guard`, there is no fail-closed
+> property to lose by wiring it directly — recall is a capability, not a gate — so what the plugin
+> adds here is packaging and updates, not enforcement.
 
 ## Configuration
 

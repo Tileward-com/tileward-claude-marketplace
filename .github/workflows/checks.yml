@@ -1,0 +1,79 @@
+# The gate's own gate.
+#
+# Claude Code treats exit 2 as "blocked" and every other non-zero code as a non-blocking error:
+# it logs the failure and runs the prompt anyway. So for a hook whose job is to refuse, exit 1 is
+# not a loud failure, it is a SILENT ALLOW -- the gate stops gating while remaining installed,
+# enabled and apparently healthy. Nothing in the client surfaces that, and no user will report it.
+# This workflow is the only thing standing between a one-character typo and a fleet that believes
+# it is governed.
+#
+# It needs no secrets. tests/exit_codes.py is hermetic: every case that gets far enough to make a
+# request points at a closed loopback port, because connection refused is what an outage looks
+# like from a hook and the correct answer to it is 2. That also means a fork can run this, and
+# that CI cannot be turned green by a service that happens to be reachable.
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed:
+    name: fail-closed sweep (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # hooks.json invokes the scripts through `#!/usr/bin/env python3`, so the interpreter is
+        # whatever the governed machine happens to have -- not one we pin. 3.9 is the oldest still
+        # shipping as the system python3 on a supported macOS; 3.13 is the newest. Both scripts are
+        # stdlib-only, so this matrix is the entire dependency story.
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Both hooks compile
+        run: python -m compileall -q plugins/tileward-guard/hooks
+      - name: No failure path exits 1
+        run: python tests/exit_codes.py
+
+  manifests:
+    name: manifests parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A marketplace.json that does not parse breaks `plugin marketplace add` for everyone who
+      # has already installed from here, not just new installs. It is the cheapest possible check
+      # and the most expensive thing to get wrong.
+      - name: Every JSON file parses
+        run: |
+          python - <<'EOF'
+          import json, pathlib, sys
+          bad = []
+          for p in sorted(pathlib.Path(".").rglob("*.json")):
+              try:
+                  json.loads(p.read_text())
+              except Exception as e:
+                  bad.append(f"{p}: {e}")
+              else:
+                  print(f"ok    {p}")
+          if bad:
+              print("\n".join(f"FAIL  {b}" for b in bad), file=sys.stderr)
+              sys.exit(1)
+          EOF
+      # hooks.json invokes the script directly, with no interpreter in front of it. A script that
+      # loses its executable bit in a commit is a hook that cannot start -- which Claude Code reads
+      # as a non-blocking error, so the prompt runs.
+      - name: Hook scripts are executable
+        run: |
+          for f in plugins/tileward-guard/hooks/*.py; do
+            test -x "$f" || { echo "FAIL  $f is not executable"; exit 1; }
+            echo "ok    $f"
+          done

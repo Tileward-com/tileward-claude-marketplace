@@ -51,7 +51,7 @@ close.
 | --- | --- | --- |
 | `TILEWARD_API_KEY` | required | The key whose bound policy decides. Unset means every prompt is blocked. |
 | `TILEWARD_API` | `https://api.tileward.com/v1/guard` | Prompt endpoint (UserPromptSubmit). |
-| `TILEWARD_TIMEOUT` | `5` | Seconds. Must stay below the hook's own 15s timeout. |
+| `TILEWARD_TIMEOUT` | `5` | Seconds, greater than 0 and at most 14, so it always lands below the hook's own 15s timeout. Empty, unparseable or out of range falls back to the default rather than raising. |
 | `TILEWARD_FAIL_OPEN` | `0` | `1` allows a prompt when Tileward cannot be reached. |
 | `TILEWARD_ACTOR` | the OS username | Who to attribute this machine's checks to in the audit report. `-` sends nothing. |
 | `TILEWARD_TOOL_INPUT_MAX` | `4096` | Characters of each string inside `tool_input` the **tool** hook sends. `0` sends none, which is a capability gate that cannot tell `rm -rf /` from `ls`. Unused until that hook is in service. |
