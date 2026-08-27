@@ -51,7 +51,9 @@ tag as the receipt, so:
 
 - Bump the version in the same commit as the change, not afterwards. A tag pointing at a commit
   whose manifest says a different number is the failure this scheme exists to prevent, and
-  `claude plugin tag` will catch it only if the marketplace entry disagrees too.
+  **nothing here will catch it for you.** `claude plugin tag` refuses only when the marketplace
+  entry names a version that disagrees; ours names none, so the tool tags whatever the manifest
+  says, including a number nobody bumped. Read the manifest before you tag.
 - Never move a published tag. `claude plugin tag` takes `--force` and the underlying command is
   `git tag -f` with `push --force`; that is there for a tag you created sixty seconds ago and have
   not pushed, not for one somebody may have installed against.
