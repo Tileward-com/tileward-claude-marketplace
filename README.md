@@ -88,35 +88,28 @@ shape for a gate.
 A hook is different. Claude Code runs it before the model, reads its exit code, and an
 administrator can install it so the user cannot remove it. That is a real gate.
 
-## Which path you can actually use today
+## Which path to use
 
-**The plan is B — this plugin, installed from this marketplace.** It is the only shape that is both
-delivered and updated by the platform *and* fail-closed when Tileward is unreachable. A and
-B-manual below are what to use *until this repository is public*; they are stopgaps, not rival
-designs.
+**Install the plugin from this marketplace.** It is the only shape that is both delivered and
+updated by the platform *and* fail-closed when Tileward is unreachable. Two other paths exist, and
+each gives something up.
 
-**This repository is private today**, and that is the single thing in the way. Claude Code clones a
-marketplace with the machine's own git credentials, so every `marketplace add` and
-`extraKnownMarketplaces` line below works only where those credentials can read this repo — inside
-Tileward, and nowhere else. A customer's fleet fails at the clone, before any of the settings below
-get a chance to matter.
-
-| | Works while this repo is private | Fails when Tileward is unreachable |
+| | What you deploy | When Tileward is unreachable |
 | --- | --- | --- |
-| **A** — `type: "http"` at `/v1/guard/hook` | **yes, for anyone** | **the prompt runs** (Claude Code fails open on an unreachable HTTP hook) |
-| **B** — this plugin ← **the plan** | Tileward machines, until this repo is public | blocked |
-| **B-manual** — the copied scripts | yes, but you deploy and monitor the files | blocked |
+| **A** — `type: "http"` at `/v1/guard/hook` | nothing; a few lines of settings | **the prompt runs** (Claude Code fails open on an unreachable HTTP hook) |
+| **B** — this plugin ← **the recommendation** | nothing; the marketplace delivers and updates it | blocked |
+| **B-manual** — the copied scripts | the files, on every machine, maintained by you | blocked |
 
-Until it is public there is no path that is both externally installable *and* fail-closed on an
-outage. That cost is entirely the repository's visibility, and it is not a security cost: nothing
-here is secret. The policy lives server-side on the API key and this is a thin client. Going public
-is tracked as #226.
+The second column is the whole decision. Claude Code fails open when it cannot reach an HTTP hook,
+and no response can change that, because nothing is there to answer; a local process can refuse on
+its own. So A is the fewest moving parts *and* the one that lets prompts through during an outage.
+If a prompt must never run unchecked, A is not for you. The full matrix is in [Fail closed, and the
+exact limit of that promise](#fail-closed-and-the-exact-limit-of-that-promise).
 
-**Until that lands:** if you are outside Tileward, use **option A** and accept that an outage lets
-prompts through. If a prompt must never run unchecked, use **B-manual** — copy
-`plugins/tileward-guard/hooks/tileward_guard_hook.py` out of this repo and wire it by absolute path.
-That needs no marketplace and no clone at runtime; you own the deployment. For air-gapped or CI
-fleets, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` and nothing is cloned at runtime either.
+B-manual is this plugin's own script, copied out and wired by absolute path: fail-closed, no
+marketplace, no clone at runtime, and the deployment and its updates are yours to own. For
+air-gapped or CI fleets, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` and nothing is cloned at
+runtime either.
 
 ## Install (one developer)
 
@@ -132,10 +125,6 @@ That is a guardrail you chose and can `/plugin uninstall` at any time. It is not
 anyone, including yourself. To govern somebody else, read the next section: **a plugin the governed
 party can uninstall is a suggestion.**
 
-> **This clone needs credentials for a private repo, until this repository is public.** It
-> succeeds inside Tileward and fails everywhere else — see [Which path you can actually use
-> today](#which-path-you-can-actually-use-today).
-
 ## Install (an organization, enforced)
 
 Managed settings, which a user cannot override: macOS
@@ -144,12 +133,10 @@ Managed settings, which a user cannot override: macOS
 or pushed from the claude.ai admin console. Settings precedence puts managed at the top, above
 command-line arguments, local, project, and user settings.
 
-> **This block needs the repository to be readable by every governed machine.** It is private
-> until we publish it, so on a customer fleet today the marketplace clone fails and the plugin
-> never loads — and because
-> a missing hook is a hook that does not run, the result is an organization that looks governed and
-> is not. Verify on one machine before rolling it out. See [Which path you can actually use
-> today](#which-path-you-can-actually-use-today).
+> **Verify on one machine before rolling this out to a fleet.** A marketplace that cannot be
+> cloned means the plugin never loads, and a hook that does not load is a hook that does not run —
+> an organization that looks governed and is not. The clone is plain `git` against a public
+> repository, so the usual causes are a proxy, an egress rule, or a runner with no network.
 
 ```json
 {
@@ -273,10 +260,6 @@ nothing is there to answer. A local process can refuse on its own. The plugin ge
 a deployment to babysit, which is why it is the recommendation. Option A is still the least moving
 parts if you would rather accept the outage behaviour than run any local code.
 
-**On availability, not merit:** B is the recommendation and is currently reachable only from
-machines that can read this private repository. If that is not you, the honest ordering is A for
-least friction, B-manual when the outage behaviour is unacceptable, and B once the repo is public.
-
 ## The policy lives on the key
 
 The prompt hook sends only the prompt. It does not send topics and does not send your policy to a
@@ -302,7 +285,7 @@ yet](#tool-call-governance-is-not-available-yet).
 | --- | --- | --- |
 | `TILEWARD_API_KEY` | required | The key whose bound policy decides. Unset means every prompt is blocked. |
 | `TILEWARD_API` | `https://api.tileward.com/v1/guard` | Prompt endpoint, used by the UserPromptSubmit hook. |
-| `TILEWARD_TIMEOUT` | `5` | Seconds. Keep it well under the hook's own `timeout`. |
+| `TILEWARD_TIMEOUT` | `5` | Seconds, greater than 0 and at most 14. Keep it well under the hook's own `timeout`. Empty, unparseable or out of range falls back to the default rather than raising. |
 | `TILEWARD_FAIL_OPEN` | `0` | `1` allows a prompt when Tileward cannot be reached. |
 | `TILEWARD_ACTOR` | the OS username | Who to attribute this machine's checks to in the audit report. `-` sends nothing. Read the section below before relying on it. |
 
@@ -373,9 +356,23 @@ change that. So:
 - The guard answers in roughly 200ms, so timeouts should be rare, but design for the day they are not.
 
 `exit 1 does not block.` Claude Code treats any non-zero code other than 2 as a non-blocking error,
-logs it, and runs the prompt anyway. Neither script exits 1, on any path, and there is a test that
-sweeps every failure path to keep it that way. If you fork one, keep that property, or it will
-quietly stop gating while still looking installed.
+logs it, and runs the prompt anyway. For a gate that makes exit 1 a *silent allow*, not a loud
+failure: it stops gating while remaining installed, enabled and apparently healthy.
+
+`tests/exit_codes.py` sweeps every failure path in both scripts and asserts none of them lands on
+1. It needs no network, no key and no policy -- every case that gets far enough to make a request
+points at a closed loopback port, because connection refused is what an outage looks like from
+here and the correct answer to it is 2.
+
+```bash
+python3 tests/exit_codes.py
+```
+
+Run it after any change to either script, and if you fork one, keep the sweep with it. This is not
+a hypothetical property: until 2026-08-27 both scripts parsed `TILEWARD_TIMEOUT` with a bare
+`float()` at module level, outside the `try/except` around `main()`, and setting that variable to
+an empty string exited 1. An empty value arrives the ordinary way -- an `export` with nothing after
+it, an empty entry in a managed-settings env block, a CI variable declared and never given one.
 
 ## Two traps worth knowing
 
@@ -428,6 +425,18 @@ echo '{"hook_event_name":"UserPromptSubmit","prompt_id":"p2","prompt":"<somethin
 
 Claude Code does nothing more than this: it pipes that JSON to the script and reads the exit code.
 If those two cases behave, the hook behaves.
+
+Those two need a key, a policy and the network. The sweep in `tests/exit_codes.py` needs none of
+them — it covers the other direction, every way the hook can give up early, and asserts that none
+of them lands on the exit code that would let the prompt through:
+
+```bash
+python3 tests/exit_codes.py
+```
+
+`.github/workflows/checks.yml` runs it on every push and pull request, against Python 3.9, 3.11 and
+3.13, because `#!/usr/bin/env python3` means the interpreter is whatever the governed machine
+happens to have.
 
 ---
 

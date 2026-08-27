@@ -23,7 +23,13 @@ upgrades is the person whose prompts stop going through.
 
 ## Cutting a release
 
-The working tree must be clean; the tag is created at `HEAD`.
+The working tree must be clean; the tag is created at `HEAD`. Run the fail-closed sweep first. CI
+runs it on every push, but a tag is a receipt for one specific commit, and you want the answer
+before you write the receipt:
+
+```bash
+python3 tests/exit_codes.py
+```
 
 ```bash
 claude plugin tag --dry-run plugins/<name>   # what would happen

@@ -108,7 +108,40 @@ import urllib.request
 
 API = os.environ.get("TILEWARD_TOOL_API", "https://api.tileward.com/v1/guard/tool")
 KEY = os.environ.get("TILEWARD_API_KEY", "").strip()
-TIMEOUT = float(os.environ.get("TILEWARD_TIMEOUT", "5"))
+DEFAULT_TIMEOUT = 5.0
+# Ceiling on TILEWARD_TIMEOUT. hooks.json grants this script 15s; a value at or above that lets
+# the harness kill it mid-request, and a killed command hook is a non-blocking error -- the gate
+# would stop gating at exactly the moment the network was slowest. 14 keeps the last word here.
+MAX_TIMEOUT = 14.0
+
+
+def _timeout() -> float:
+    """Seconds to wait for the guard before giving up. Parsed defensively, at import time.
+
+    A bad value must not raise. Module-level code runs OUTSIDE the try/except around main(), so an
+    exception escapes as a traceback and exit 1 -- the one non-zero code Claude Code reads as a
+    non-blocking error, which means the prompt runs. This line used to be a bare float() and did
+    exactly that: TILEWARD_TIMEOUT set to an empty string, to `5s`, or to any other unparseable
+    text disabled the gate while leaving it installed and apparently healthy.
+
+    Empty is the realistic way in, and it does not look like a mistake at the call site: `export
+    TILEWARD_TIMEOUT=` in a shell profile, an empty value in a managed-settings env block, or a CI
+    variable declared and never given a value. os.environ.get's default does not cover it, because
+    the variable IS set -- it is set to nothing -- so the `or` below is doing the real work.
+
+    Out-of-range values fall back to the default rather than clamping to the nearest edge. Someone
+    who wrote a negative or an infinite timeout did not mean "as long as it takes"; they wrote
+    something unusable, and the default is the only reading that is safe in both directions. The
+    comparison also disposes of nan, which fails every ordering it is given.
+    """
+    try:
+        value = float(os.environ.get("TILEWARD_TIMEOUT", "") or DEFAULT_TIMEOUT)
+    except ValueError:
+        return DEFAULT_TIMEOUT
+    return value if 0 < value <= MAX_TIMEOUT else DEFAULT_TIMEOUT
+
+
+TIMEOUT = _timeout()
 FAIL_OPEN = os.environ.get("TILEWARD_FAIL_OPEN", "0") == "1"
 
 
