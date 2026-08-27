@@ -5,8 +5,8 @@ server holds the history; each turn asks it for the part that matters and pays f
 
 ```
 long conversation
-   -> twinkle_remember after each exchange        (the server keeps the turn)
-   -> twinkle_recall before answering             (you get back the relevant slice, in a budget)
+   -> tileward_remember after each exchange        (the server keeps the turn)
+   -> tileward_recall before answering             (you get back the relevant slice, in a budget)
       -> the model reads the slice, not the transcript
 ```
 
@@ -60,31 +60,37 @@ not a limit anyone chose.
 Two minutes rather than something tighter, for two reasons. Claude Code applies a second timer to
 every HTTP MCP request covering the wait for the server's first response byte; it is 60 seconds
 unless the per-server `timeout` is set to 60 seconds or more, and a smaller value does not shorten
-it. So anything under 60000 buys nothing. And this server carries `twinkle_ingest_file`, which reads
+it. So anything under 60000 buys nothing. And this server carries `tileward_ingest_file`, which reads
 and embeds a whole file — far slower than recall, and the operation most likely to want the room.
 
 Two minutes is also where Claude Code moves a long main-conversation tool call into a background
 task, so this ceiling lands exactly where the call would stop blocking the turn anyway: it either
 answers within the turn or fails, and never becomes a background task.
 
-**Recall itself is nowhere near this.** Measured against production on 2026-08-25, `twinkle_recall`
+**Recall itself is nowhere near this.** Measured against production on 2026-08-25, `tileward_recall`
 answered in 163–299 ms over five samples (against `api.tileward.com/mcp`). The budget is for the slow tools and a bad link, not
 because the server is slow.
 
 ## The tools
 
-Conversation memory: `twinkle_remember`, `twinkle_remember_many`, `twinkle_recall`,
-`twinkle_context`, `twinkle_pin`, `twinkle_unpin`, `twinkle_forget`, `twinkle_reset`,
-`twinkle_set_topics`, `twinkle_stats`.
+Conversation memory: `tileward_remember`, `tileward_remember_many`, `tileward_recall`,
+`tileward_context`, `tileward_pin`, `tileward_unpin`, `tileward_forget`, `tileward_reset`,
+`tileward_set_topics`, `tileward_stats`.
 
-Documents: `twinkle_ingest_document`, `twinkle_ingest_file`, `twinkle_list_documents`,
-`twinkle_delete_document`.
+Documents: `tileward_ingest_document`, `tileward_ingest_file`, `tileward_list_documents`,
+`tileward_delete_document`.
 
-Account: `twinkle_clear_account`, `twinkle_purge_account`, `twinkle_close_account`. These are
-destructive and account-wide — `twinkle_purge_account` is not undoable.
+Account: `tileward_clear_account`, `tileward_purge_account`, `tileward_close_account`. These are
+destructive and account-wide — `tileward_purge_account` is not undoable.
 
-One name misleads and is worth knowing before you rely on it: **`twinkle_forget` does not delete
-turns.** It drops a topic from recall. `twinkle_reset` is what tombstones turns.
+One name misleads and is worth knowing before you rely on it: **`tileward_forget` does not delete
+turns.** It drops a topic from recall. `tileward_reset` is what tombstones turns.
+
+**If you have seen `twinkle_*` names, they still work.** These tools were `twinkle_*` — the
+engine's internal name — until 2026-08-27. The server stopped listing those names, so a fresh
+connection is offered only `tileward_*`, but every retired name is still answered: a client that
+connected before the rename, or a `CLAUDE.md` that still says `twinkle_recall`, keeps working
+untouched. Write `tileward_*` in anything new.
 
 ## Conversation scoping is a data-isolation control, not a preference
 
@@ -112,13 +118,13 @@ header cannot.
 ## Getting the model to actually use it
 
 The server ships usage instructions with its tool list, so in most sessions Claude will call
-`twinkle_recall` and `twinkle_remember` on its own. To make it explicit for a repo, add this to your
+`tileward_recall` and `tileward_remember` on its own. To make it explicit for a repo, add this to your
 `CLAUDE.md`:
 
-> You have Tileward Context tools. Before answering a substantive question, call `twinkle_recall`
+> You have Tileward Context tools. Before answering a substantive question, call `tileward_recall`
 > with the user's latest message as the query and rely on the returned context block instead of
-> scrolling history. After each exchange, call `twinkle_remember` on the user turn and your reply.
-> Use `twinkle_pin` for durable facts (the goal, hard constraints) and `twinkle_forget` when a topic
+> scrolling history. After each exchange, call `tileward_remember` on the user turn and your reply.
+> Use `tileward_pin` for durable facts (the goal, hard constraints) and `tileward_forget` when a topic
 > is finished. Pass the same `conversation` id on every call in a conversation.
 
 ## What leaves your machine
