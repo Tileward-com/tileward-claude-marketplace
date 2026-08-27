@@ -369,7 +369,7 @@ python3 tests/exit_codes.py
 ```
 
 Run it after any change to either script, and if you fork one, keep the sweep with it. This is not
-a hypothetical property: until 2026-08-27 both scripts parsed `TILEWARD_TIMEOUT` with a bare
+a hypothetical property: before the first release both scripts parsed `TILEWARD_TIMEOUT` with a bare
 `float()` at module level, outside the `try/except` around `main()`, and setting that variable to
 an empty string exited 1. An empty value arrives the ordinary way -- an `export` with nothing after
 it, an empty entry in a managed-settings env block, a CI variable declared and never given one.

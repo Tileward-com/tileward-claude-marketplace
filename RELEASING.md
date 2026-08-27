@@ -53,6 +53,11 @@ tag as the receipt, so:
 
 ## History
 
-`v1.0.0` of both plugins is the first tagged release, cut 2026-08-25 — before the repository went
-public and before anybody outside Tileward could install either one. Nothing shipped under a
-version number before that, which is why neither plugin has a 0.x line.
+`v1.0.0` of both plugins is the first release, cut 2026-08-27, the day this repository went public.
+Nothing shipped under a version number before that, which is why neither plugin has a 0.x line.
+
+Tags did exist earlier, while the repository was private. They were deleted rather than kept,
+because they recorded numbers nobody could install against and would have made the first public
+release look like a mid-series patch. That is the one situation in which discarding a tag is right,
+and it does not generalise: from here every tag is a receipt somebody may have installed against,
+so the rule above — never move a published tag — applies without exception.

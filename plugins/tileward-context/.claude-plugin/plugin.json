@@ -1,7 +1,7 @@
 {
   "name": "tileward-context",
   "displayName": "Tileward Context",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "Recall only the relevant slice of a long conversation instead of resending the whole transcript, so context stays small and each turn costs less. Hosted, no local server to run.",
   "author": {
     "name": "Tileward",
