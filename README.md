@@ -204,9 +204,10 @@ install, nothing to keep updated, nothing that can be deleted from a laptop.
 }
 ```
 
-Do NOT point this at `/v1/guard`: that endpoint answers `{"result": {"allowed": false}}`, and Claude
-Code blocks only on a body saying `{"decision": "block"}`, so it would allow every prompt while
-looking installed. `/v1/guard/hook` exists precisely for this.
+`/v1/guard/hook` is the hook address: it answers in the shape Claude Code's hooks expect, with the
+fail-closed rules a control needs. The plain `/v1/guard` is the same guard for calling from your own
+code, answering in the API's shape; a hook payload that reaches it is answered in the hook's
+contract as well, so the wrong address does not wave prompts through.
 
 There is no equivalent block for tool calls. `/v1/guard/tool` does not exist, so a `PreToolUse`
 `type: "http"` hook pointed at it gets a 404, which Claude Code reads as a non-blocking error and
@@ -372,13 +373,7 @@ a hypothetical property: before the first release both scripts parsed `TILEWARD_
 an empty string exited 1. An empty value arrives the ordinary way -- an `export` with nothing after
 it, an empty entry in a managed-settings env block, a CI variable declared and never given one.
 
-## Two traps worth knowing
-
-**Do not point a `type: "http"` hook straight at `/v1/guard`.** Claude Code blocks only on a 2xx
-response whose body says `{"decision": "block"}`. `/v1/guard` answers
-`{"cost_micros": N, "result": {"allowed": false}}`, so Claude Code would read 2xx, find no
-`decision` field, and allow every prompt while looking installed. Non-2xx fails open as well. Use
-`/v1/guard/hook` (option A above), which speaks the hook's contract, or this script.
+## A trap worth knowing
 
 **`api.tileward.com` is behind Cloudflare, which bans urllib's default agent** (403, Cloudflare error
 1010, "banned based on your browser's signature"). This script sends its own `User-Agent` for that
