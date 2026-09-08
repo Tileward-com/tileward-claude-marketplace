@@ -40,13 +40,13 @@ EXIT CODES ARE THE WHOLE CONTRACT, AND THEY ARE A TRAP:
           stops gating while still looking installed. Every path below exits 0 or 2, never 1, and
           the bare `except` at the bottom exists for exactly that reason.
 
-WHY NOT AN HTTP HOOK POINTED STRAIGHT AT THE GUARD? Claude Code supports `type: "http"`, which
-needs no local script. But it blocks only on a 2xx response whose body says {"decision": "block"}.
-/v1/guard answers {"cost_micros": N, "result": {"allowed": false}}, so Claude Code would read 2xx,
-find no `decision`, and ALLOW every prompt while looking installed. Non-2xx fails open too.
-/v1/guard/hook speaks the hook's contract and is the supported HTTP option; point at that, never at
-/v1/guard. The reason to run this script instead is that an HTTP hook cannot block when Claude Code
-cannot reach us at all, and a local process can.
+WHY THIS SCRIPT RATHER THAN A `type: "http"` HOOK? Claude Code supports `type: "http"`, which
+needs no local script, and /v1/guard/hook speaks the hook's contract: a 2xx whose body says
+{"decision": "block"} is the only thing Claude Code blocks on, and that endpoint answers exactly
+that, failing closed on a bad key, an empty balance or a missing prompt. (The plain /v1/guard, the
+API address this script calls, answers a hook payload in that contract too.) The reason to run
+this script instead is that an HTTP hook cannot block when Claude Code cannot reach us at all,
+and a local process can.
 
 This script ships as the `tileward-guard` plugin's UserPromptSubmit hook, which is how it should be
 installed: the plugin handles delivery and updates, and an admin can force-enable it through managed
