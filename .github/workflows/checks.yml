@@ -44,6 +44,17 @@ jobs:
       - name: No failure path exits 1
         run: python tests/exit_codes.py
 
+  analysis:
+    name: static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: ruff check
+        run: pip install ruff && ruff check --select=S,F,E,W,UP,I --ignore=E501,S310,S603 .
+
   manifests:
     name: manifests parse
     runs-on: ubuntu-latest
