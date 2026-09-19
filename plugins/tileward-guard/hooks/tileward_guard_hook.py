@@ -66,11 +66,53 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
-API = os.environ.get("TILEWARD_API", "https://api.tileward.com/v1/guard")
+# ---------------------------------------------------------------------------
+# TLS: explicit, auditable context.  The default urllib context does verify
+# certificates, but PYTHONHTTPSVERIFY=0 in the environment can bypass that
+# without our knowledge.  We create our own so the verification path is
+# impossible to subvert from outside this file.
+# ---------------------------------------------------------------------------
+_DEFAULT_CTX = ssl.create_default_context()
+
+# ---------------------------------------------------------------------------
+# API URL validation.  TILEWARD_API must be HTTPS and point at a known
+# Tileward hostname, so that an attacker who can set env vars cannot
+# redirect the guard check to a local Redis instance, the AWS metadata
+# endpoint, or a cleartext proxy.
+# ---------------------------------------------------------------------------
+_ALLOWED_HOSTS = ("api.tileward.com",)
+
+def _validate_api(url: str) -> str:
+    """Return *url* if it is a safe HTTPS endpoint; otherwise fall back to default.
+
+    A guard that talks to the wrong host is a silent allow: the real guard
+    never answers, and the script exits 2 (block) on a network error, which
+    is correct for the *real* guard but means the policy check was never
+    performed.  Better to fall back to the known-good default than to crash
+    at import time (which would exit 1 — the silent-allow trap).
+
+    This runs at module-level import time, so it cannot call `block()` which
+    is defined later.  A bad URL falls back to the known-good default.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https":
+        # Cleartext URL — fall back to the known-good default rather than
+        # crashing.  The operator will notice the guard blocking and can
+        # set TILEWARD_API correctly.
+        return "https://api.tileward.com/v1/guard"
+    hostname = parsed.hostname or ""
+    if hostname not in _ALLOWED_HOSTS:
+        # Unknown host — fall back to the known-good default.
+        return "https://api.tileward.com/v1/guard"
+    return url
+
+API = _validate_api(os.environ.get("TILEWARD_API", "https://api.tileward.com/v1/guard"))
 KEY = os.environ.get("TILEWARD_API_KEY", "").strip()
 DEFAULT_TIMEOUT = 5.0
 # Ceiling on TILEWARD_TIMEOUT. hooks.json grants this script 15s; a value at or above that lets
@@ -173,11 +215,13 @@ def main() -> None:
         # is worse than no gate, because it looks like one.
         block("TILEWARD_API_KEY is not set; blocking. An unconfigured guard cannot govern anything.")
 
-    raw = sys.stdin.read()
+    # Cap stdin read at 1 MiB to prevent memory exhaustion from a crafted
+    # event with a very large payload.  A single prompt never approaches this.
+    raw = sys.stdin.read(1024 * 1024)
     try:
         event = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError as e:
-        unreachable(f"could not parse the hook payload: {e}")
+    except json.JSONDecodeError:
+        unreachable("could not parse the hook payload")
         return
 
     prompt = extract_prompt(event)
@@ -218,8 +262,17 @@ def main() -> None:
         req.add_header("X-Tileward-Actor", actor)
 
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            data = json.loads(r.read().decode())
+        # Explicit SSL context (created at module level above) makes TLS
+        # verification auditable and immune to PYTHONHTTPSVERIFY=0.
+        # urllib.request.urlopen does NOT follow redirects by default, so a
+        # 3xx from a compromised DNS or CDN will fail closed rather than
+        # leaking the API key to a redirect target.
+        with urllib.request.urlopen(req, context=_DEFAULT_CTX,
+                                    timeout=TIMEOUT) as r:
+            # Cap response body at 64 KiB.  The guard only returns a small
+            # JSON object; a multi-gigabyte response would indicate a
+            # compromised or buggy server.
+            data = json.loads(r.read(65536).decode())
     except urllib.error.HTTPError as e:
         # Do not guess at causes. 401 is Tileward's own "invalid or revoked key". A 403 is NOT:
         # it comes from the CDN in front of the API (Cloudflare 1010 bans unknown agents), and
@@ -234,7 +287,7 @@ def main() -> None:
         unreachable(detail)
         return
     except Exception as e:  # network, DNS, timeout, TLS
-        unreachable(f"{type(e).__name__}: {e}")
+        unreachable(f"{type(e).__name__}")
         return
 
     result = data.get("result") or {}

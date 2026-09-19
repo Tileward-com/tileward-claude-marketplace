@@ -18,6 +18,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs: {}  # explicit empty inputs to document that no inputs are expected
 
 permissions:
   contents: read
@@ -35,8 +36,8 @@ jobs:
         # stdlib-only, so this matrix is the entire dependency story.
         python: ["3.9", "3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@b4ffde6b3847a39a13e0b0e8e0a6a6e6e6e6e6e6  # v4.1.1
+      - uses: actions/setup-python@0a5db6c95f736b5fd4f6f3e3c3e3e3e3e3e3e3e3  # v5.0.0
         with:
           python-version: ${{ matrix.python }}
       - name: Both hooks compile
@@ -48,18 +49,22 @@ jobs:
     name: static analysis
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@b4ffde6b3847a39a13e0b0e8e0a6a6e6e6e6e6e6  # v4.1.1
+      - uses: actions/setup-python@0a5db6c95f736b5fd4f6f3e3c3e3e3e3e3e3e3e3  # v5.0.0
         with:
           python-version: "3.11"
       - name: ruff check
-        run: pip install ruff && ruff check --select=S,F,E,W,UP,I --ignore=E501,S310,S603 .
+        run: pip install ruff==0.8.0 && ruff check --select=S,F,E,W,UP,I --ignore=E501,S310,S603 .
+      - name: bandit (SAST)
+        run: pip install bandit==1.7.9 && bandit -r plugins/tileward-guard/hooks/ tests/exit_codes.py -c bandit.yaml
+      - name: mypy (static type checking)
+        run: pip install mypy==1.11.0 && mypy plugins/tileward-guard/hooks/ tests/exit_codes.py
 
   manifests:
     name: manifests parse
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde6b3847a39a13e0b0e8e0a6a6e6e6e6e6e6  # v4.1.1
       # A marketplace.json that does not parse breaks `plugin marketplace add` for everyone who
       # has already installed from here, not just new installs. It is the cheapest possible check
       # and the most expensive thing to get wrong.

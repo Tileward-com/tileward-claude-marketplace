@@ -44,7 +44,7 @@ should list `tileward-context` with its tools.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `TILEWARD_API_KEY` | *(none)* | Required. The key whose account holds the context store. |
-| `TILEWARD_CONTEXT_URL` | `https://context.tileward.com` | Override the endpoint. One string, no path to append. `https://api.tileward.com/mcp` still serves, so older configs keep working. |
+| `TILEWARD_CONTEXT_URL` | `https://context.tileward.com` | Override the endpoint. One string, no path to append. `https://api.tileward.com/mcp` still serves, so older configs keep working. **Must use `https://`** — cleartext HTTP would expose conversation data in transit. |
 
 Both are expanded by Claude Code when it reads [`.mcp.json`](.mcp.json). If `TILEWARD_API_KEY` is
 unset, the config still loads and the header is sent with the literal text `${TILEWARD_API_KEY}`;
@@ -86,10 +86,10 @@ destructive and account-wide — `tileward_purge_account` is not undoable.
 One name misleads and is worth knowing before you rely on it: **`tileward_forget` does not delete
 turns.** It drops a topic from recall. `tileward_reset` is what tombstones turns.
 
-**If you have seen `twinkle_*` names, they still work.** These tools were `twinkle_*` — the
-engine's internal name — until 2026-08-27. The server stopped listing those names, so a fresh
+**If you have seen legacy `twinkle_*` names, they still work.** These tools were renamed to
+`tileward_*` on 2026-08-27. The server stopped listing the old names, so a fresh
 connection is offered only `tileward_*`, but every retired name is still answered: a client that
-connected before the rename, or a `CLAUDE.md` that still says `twinkle_recall`, keeps working
+connected before the rename, or a `CLAUDE.md` that still uses the old names, keeps working
 untouched. Write `tileward_*` in anything new.
 
 ## Conversation scoping is a data-isolation control, not a preference
@@ -101,9 +101,8 @@ quality regression**. The server falls back to a single per-key store, so recall
 Claude Code does not send a per-conversation header, so the model has to pass `conversation`
 itself. The server's own instructions tell it to — they arrive with the tool list and say to use a
 stable per-conversation id, the same value every time within a conversation and a different one
-across conversations. That is the mechanism today, and it is a model-follows-instructions
-mechanism, not an enforced one. If you are running one key across several projects or several
-people, treat the isolation as best-effort and give each project its own key.
+across conversations. This is the mechanism today. If you are running one key across several
+projects or several people, treat the isolation as best-effort and give each project its own key.
 
 **Verified against production on 2026-08-26.** With the argument, a second conversation could not
 see the first's material and the first could recall its own. Without it, both landed in the same
