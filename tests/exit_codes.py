@@ -31,7 +31,10 @@ HOOKS = pathlib.Path(__file__).resolve().parent.parent / "plugins" / "tileward-g
 GUARD = HOOKS / "tileward_guard_hook.py"
 PRETOOL = HOOKS / "tileward_pretooluse_hook.py"
 
-# Refused on connect, immediately. Port 1 is reserved and nothing binds it.
+# Refused on connect, immediately. Port 1 is conventionally unused (not
+# formally IANA-reserved, but nothing binds it on any supported platform).
+# If a local attacker binds it, the test gets connection refused anyway
+# — the correct outcome — so the assumption is self-healing.
 DEAD = "http://127.0.0.1:1"
 PROMPT = '{"prompt":"hi"}'
 TOOL = '{"tool_name":"Bash","tool_input":{"command":"ls"}}'
@@ -40,13 +43,15 @@ BLOCK, ALLOW = 2, 0
 
 # Environments are built from scratch rather than inherited: a TILEWARD_* variable in the shell
 # that runs this file would otherwise decide the result of the case meant to test its absence.
-GUARD_ENV = {"TILEWARD_API_KEY": "tw_live_placeholder", "TILEWARD_API": DEAD + "/v1/guard"}
-TOOL_ENV = {"TILEWARD_API_KEY": "tw_live_placeholder", "TILEWARD_TOOL_API": DEAD + "/v1/guard/tool"}
+# The key placeholder is not a real key and does not match any known prefix pattern.
+GUARD_ENV = {"TILEWARD_API_KEY": "test_placeholder_not_a_real_key", "TILEWARD_API": DEAD + "/v1/guard"}
+TOOL_ENV = {"TILEWARD_API_KEY": "test_placeholder_not_a_real_key", "TILEWARD_TOOL_API": DEAD + "/v1/guard/tool"}
 
 # (name, script, stdin, env, expected exit code)
 CASES = [
     ("guard: no API key",            GUARD, PROMPT, {"TILEWARD_API_KEY": ""},          BLOCK),
     ("guard: key unset entirely",    GUARD, PROMPT, {},                                BLOCK),
+    ("guard: key whitespace-only",   GUARD, PROMPT, {"TILEWARD_API_KEY": "   "},       BLOCK),
     ("guard: guard unreachable",     GUARD, PROMPT, GUARD_ENV,                         BLOCK),
     ("guard: unreachable + FAIL_OPEN", GUARD, PROMPT, GUARD_ENV | {"TILEWARD_FAIL_OPEN": "1"}, ALLOW),
     ("guard: stdin is not JSON",     GUARD, "not json", GUARD_ENV,                     BLOCK),
@@ -54,6 +59,7 @@ CASES = [
     ("guard: payload has no prompt", GUARD, "{}", GUARD_ENV,                           BLOCK),
     ("guard: payload is a list",     GUARD, "[]", GUARD_ENV,                           BLOCK),
     ("tool: no API key",             PRETOOL, TOOL, {"TILEWARD_API_KEY": ""},          BLOCK),
+    ("tool: key whitespace-only",    PRETOOL, TOOL, {"TILEWARD_API_KEY": "   "},       BLOCK),
     ("tool: endpoint unreachable",   PRETOOL, TOOL, TOOL_ENV,                          BLOCK),
     ("tool: unreachable + FAIL_OPEN", PRETOOL, TOOL, TOOL_ENV | {"TILEWARD_FAIL_OPEN": "1"}, ALLOW),
     ("tool: stdin is not JSON",      PRETOOL, "not json", TOOL_ENV,                    BLOCK),
@@ -63,7 +69,7 @@ CASES = [
 # Values that must never reach a bare float()/int() at module level. Each is swept against both
 # scripts on top of the "unreachable" environment, so the expected answer is always BLOCK.
 # "" and " " are the ones that actually happened; the rest are the shapes a typo takes.
-JUNK = ["", " ", "5s", "abc", "-1", "0", "nan", "inf", "1e999", "5,0", "٥"]
+JUNK = ["", " ", "5s", "abc", "-1", "0", "nan", "inf", "-inf", "infinity", "1e999", "5,0", "٥"]
 for value in JUNK:
     CASES.append((f"guard: TILEWARD_TIMEOUT={value!r}", GUARD, PROMPT,
                   GUARD_ENV | {"TILEWARD_TIMEOUT": value}, BLOCK))
@@ -73,19 +79,30 @@ for value in JUNK:
                   TOOL_ENV | {"TILEWARD_TOOL_INPUT_MAX": value}, BLOCK))
 
 
-def run(script: pathlib.Path, stdin: str, env: dict[str, str]) -> int:
-    # PATH is kept so `#!/usr/bin/env python3` resolves; nothing else is inherited.
-    return subprocess.run(
-        [sys.executable, str(script)],
-        input=stdin, text=True, capture_output=True,
-        env={"PATH": "/usr/bin:/bin"} | env, timeout=30,
-    ).returncode
+def run(script: pathlib.Path, stdin: str, env: dict[str, str]) -> tuple[int, str]:
+    """Run *script* with *stdin* and *env*, return (returncode, stderr)."""
+    # PATH is kept so `#!/usr/bin/env python3` resolves; nothing else is
+    # inherited.  PYTHONPATH is cleared to prevent package shadowing on the
+    # host machine from affecting the subprocess.
+    env = {"PATH": "/usr/bin:/bin", "PYTHONPATH": ""} | env
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            input=stdin, text=True, capture_output=True,
+            env=env, timeout=30,
+        )
+        return result.returncode, result.stderr
+    except subprocess.TimeoutExpired:
+        # A killed process (SIGKILL / SIGTERM) does NOT exit 1 — it exits -9
+        # or -15, which is NOT in (0, 2) and is caught by the silent_allow
+        # check below.  Return -1 explicitly and an empty stderr stub.
+        return -1, ""
 
 
 def main() -> int:
     failures = 0
     for name, script, stdin, env, expected in CASES:
-        code = run(script, stdin, env)
+        code, stderr = run(script, stdin, env)
         # Two assertions, and the second is the one that matters. A case may legitimately change
         # which of 0 or 2 it returns as behaviour evolves; exit 1 is never legitimate, from any
         # path, in either script.
@@ -95,6 +112,8 @@ def main() -> int:
             failures += 1
             note = "  <-- EXIT 1 IS A SILENT ALLOW" if code == 1 else ""
             print(f"FAIL  {name}: expected {expected}, got {code}{note}")
+            if stderr:
+                print(f"        stderr: {stderr.strip()[:200]}")
         else:
             print(f"ok    {name}: {code}")
     print(f"\n{len(CASES) - failures}/{len(CASES)} passed")

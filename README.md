@@ -31,6 +31,9 @@ you type a prompt
 
 ## Tool-call governance is not available yet
 
+> **WARNING:** Governing the ask alone is not enough — a permitted prompt can still lead to `rm -rf`.
+> Tool calls are **unexamined** while the fleet looks governed. See below for details.
+
 Governing the ask alone is not enough — a permitted prompt can still end in `rm -rf` — so the plan
 is a second hook on `PreToolUse`, reading a separate **execution** policy bound to the same key.
 **That half is not built.** Measured against production on 2026-08-25:
@@ -42,10 +45,7 @@ POST /v1/guard/tool  -> 404
 ```
 
 There is no execution policy kind on a key either (`kind` is `governance | context`), and no
-Execution page in the console to edit one. Tracked as
-#189 (the policy kind),
-#190 (the endpoint and hook) and
-#257.
+Execution page in the console to edit one.
 
 **This plugin therefore does not register a `PreToolUse` hook.** The client script
 (`plugins/tileward-guard/hooks/tileward_pretooluse_hook.py`) stays in the repo for when the server
@@ -160,6 +160,11 @@ suggestion:
 - **`strictKnownMarketplaces`** stops users adding their own marketplaces.
 - **`disableSideloadFlags`** rejects `--plugin-dir`, `--plugin-url`, `--agents`, and `--mcp-config`,
   which would otherwise bypass the previous line for a single run.
+
+> **Security warning:** Each line above closes a specific door. Dropping *any one* of them turns
+> enforcement back into a suggestion. In particular, `TILEWARD_FAIL_OPEN=1` (an environment
+> variable) can disable the guard entirely — it should only be set in managed settings by
+> administrators, and never in a personal shell profile.
 
 For container and CI images, pre-populate `CLAUDE_CODE_PLUGIN_SEED_DIR` so nothing is cloned at
 runtime.
@@ -432,6 +437,3 @@ python3 tests/exit_codes.py
 happens to have.
 
 ---
-
-Bare `#NNN` references point at issues in Tileward's internal tracker, which is not public.
-They are kept so the reasoning here stays traceable for us; you are not missing a link.
