@@ -72,8 +72,8 @@ jobs:
           config: >-
             p/python
             p/python.lang.security
-        fail-on-output: false
-        generate-sarif: "1"
+          generate-sarif: "1"
+        continue-on-error: true
 
       - name: Upload SARIF results
         if: always()
