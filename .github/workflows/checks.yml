@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   fail-closed:
@@ -67,7 +68,13 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
       - name: semgrep
-        run: pip install semgrep==1.93.0 && semgrep --config=p/python --generate-sarif --output semgrep.sarif --optimization none . || true
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/python.lang.security
+          fail-on-output: false
+          generate-sarif: "1"
 
       - name: Upload SARIF results
         if: always()
