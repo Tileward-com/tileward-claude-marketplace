@@ -68,17 +68,24 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
       - name: semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/python
-            p/python.lang.security
-          generate-sarif: "1"
-        continue-on-error: true
+        # Findings go to code scanning instead of failing the build. A scan that cannot run (an
+        # unknown rule pack, no network) fails this step, rather than uploading nothing.
+        run: >-
+          pipx run --spec semgrep==1.177.0 semgrep scan
+          --config p/python --config r/python.lang.security
+          --metrics=off --sarif-output=semgrep.sarif
 
       - name: Upload SARIF results
-        if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        # Fork and Dependabot pull requests run with a read-only token, which cannot upload.
+        if: >-
+          ${{
+            !cancelled()
+            && hashFiles('semgrep.sarif') != ''
+            && (github.event_name != 'pull_request'
+              || (github.event.pull_request.head.repo.full_name == github.repository
+                && github.actor != 'dependabot[bot]'))
+          }}
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd  # v4.38.1
         with:
           sarif_file: semgrep.sarif
 
