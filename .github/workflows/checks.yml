@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       # hooks.json invokes the scripts through `#!/usr/bin/env python3`, so the interpreter is
       # whatever the governed machine happens to have -- not one we pin. 3.9 is the oldest still
       # shipping as the system python3 on a supported macOS; 3.13 is the newest. Both scripts are
