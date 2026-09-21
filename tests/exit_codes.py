@@ -12,6 +12,10 @@ raised ValueError and exited 1. An empty value reaches here the ordinary way: an
 nothing after it, an empty entry in a managed-settings env block, a CI variable declared and never
 given a value.
 
+The endpoint variables carried the same flaw. Both scripts check TILEWARD_API and TILEWARD_TOOL_API
+with urlparse at import time, and a malformed bracketed host such as `https://[` made urlparse raise
+ValueError and the script exit 1.
+
 HERMETIC ON PURPOSE. Every case that gets far enough to make a request points at a closed loopback
 port, so the sweep needs no network, no API key and no policy, and it cannot be turned green by a
 service that happens to be reachable. Connection refused IS the case under test: it is what an
@@ -77,6 +81,20 @@ for value in JUNK:
                   TOOL_ENV | {"TILEWARD_TIMEOUT": value}, BLOCK))
     CASES.append((f"tool: TILEWARD_TOOL_INPUT_MAX={value!r}", PRETOOL, TOOL,
                   TOOL_ENV | {"TILEWARD_TOOL_INPUT_MAX": value}, BLOCK))
+
+# The endpoint variables get the same treatment. Each script runs its endpoint through urlparse at
+# import time, outside the try/except around main(), and urlparse raises ValueError on a malformed
+# bracketed host. The first four values below do that. The last three parse without complaint and
+# are here so the line between the two cannot move unnoticed: the first of them is one `.port` read
+# away from raising. A script that cannot use its endpoint falls back to its default, where the
+# sweep gets no decision, so the answer to every one of them is BLOCK.
+ENDPOINTS = ["https://[", "http://[", "https://[::1", "https://[foo]/",
+             "https://api.tileward.com:99999/", "not a url", ""]
+for endpoint in ENDPOINTS:
+    CASES.append((f"guard: TILEWARD_API={endpoint!r}", GUARD, PROMPT,
+                  GUARD_ENV | {"TILEWARD_API": endpoint}, BLOCK))
+    CASES.append((f"tool: TILEWARD_TOOL_API={endpoint!r}", PRETOOL, TOOL,
+                  TOOL_ENV | {"TILEWARD_TOOL_API": endpoint}, BLOCK))
 
 
 def run(script: pathlib.Path, stdin: str, env: dict[str, str]) -> tuple[int, str]:
