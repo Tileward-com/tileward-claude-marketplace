@@ -45,7 +45,7 @@ jobs:
       # shipping as the system python3 on a supported macOS; 3.13 is the newest. Both scripts are
       # stdlib-only, so these interpreters are the entire dependency story for the hooks. The last
       # version listed is the default `python`, which runs the tooling below.
-      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: |
             3.9
