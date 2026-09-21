@@ -68,6 +68,13 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
 
       - name: semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/python.lang.security
+          generate-sarif: "1"
+        continue-on-error: true
         run: pip install semgrep==1.93.0 && semgrep --config=p/python --sarif --sarif-output semgrep.sarif --optimizations none . || true
 
       - name: Upload SARIF results
