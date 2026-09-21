@@ -7,10 +7,11 @@
 # This workflow is the only thing standing between a one-character typo and a fleet that believes
 # it is governed.
 #
-# It needs no secrets. tests/exit_codes.py is hermetic: every case that gets far enough to make a
-# request points at a closed loopback port, because connection refused is what an outage looks
-# like from a hook and the correct answer to it is 2. That also means a fork can run this, and
-# that CI cannot be turned green by a service that happens to be reachable.
+# It needs no secrets. tests/exit_codes.py is offline: every request a hook makes is sent to a
+# closed loopback port instead of the network, so it is refused on the runner, and the sweep fails
+# if anything is looked up or connected to anywhere else. Connection refused is what an outage
+# looks like from a hook and the correct answer to it is 2. That also means a fork can run this,
+# and that CI cannot be turned green by a service that happens to be reachable.
 name: checks
 
 on:
