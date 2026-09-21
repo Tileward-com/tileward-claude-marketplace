@@ -24,50 +24,103 @@ permissions:
   contents: read
   security-events: write
 
+concurrency:
+  # A newer push to a pull request makes the run for its older commit moot. Runs on main are never
+  # cancelled: every commit there keeps a result of its own.
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  fail-closed:
-    name: fail-closed sweep (py${{ matrix.python }})
+  # One job rather than one per concern. Each check here is seconds of work, and every job pays for
+  # its own runner start and checkout, so splitting them multiplied the builds per push without
+  # making any check faster. Every step after the install carries `!cancelled()`, so one push still
+  # reports every failure instead of stopping at the first.
+  checks:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # hooks.json invokes the scripts through `#!/usr/bin/env python3`, so the interpreter is
-        # whatever the governed machine happens to have -- not one we pin. 3.9 is the oldest still
-        # shipping as the system python3 on a supported macOS; 3.13 is the newest. Both scripts are
-        # stdlib-only, so this matrix is the entire dependency story.
-        python: ["3.9", "3.11", "3.13"]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      # hooks.json invokes the scripts through `#!/usr/bin/env python3`, so the interpreter is
+      # whatever the governed machine happens to have -- not one we pin. 3.9 is the oldest still
+      # shipping as the system python3 on a supported macOS; 3.13 is the newest. Both scripts are
+      # stdlib-only, so these interpreters are the entire dependency story for the hooks. The last
+      # version listed is the default `python`, which runs the tooling below.
       - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
         with:
-          python-version: ${{ matrix.python }}
-      - name: Both hooks compile
-        run: python -m compileall -q plugins/tileward-guard/hooks
-      - name: No failure path exits 1
-        run: python tests/exit_codes.py
+          python-version: |
+            3.9
+            3.13
+            3.11
+      - name: Install tooling
+        run: pip install -r requirements.txt ruff==0.8.0 bandit==1.7.9 mypy==1.11.0
 
-  analysis:
-    name: static analysis
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      - uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
-        with:
-          python-version: "3.11"
+      - name: fail-closed sweep
+        if: ${{ !cancelled() }}
+        # Every interpreter runs even if an earlier one fails, so a break on one version cannot hide
+        # a break on another.
+        run: |
+          status=0
+          for py in python3.9 python3.11 python3.13; do
+            echo "== $py"
+            "$py" -m compileall -q plugins/tileward-guard/hooks || status=1
+            "$py" tests/exit_codes.py || status=1
+          done
+          exit "$status"
+
       - name: ruff check
-        run: pip install ruff==0.8.0 && ruff check --select=S,F,E,W,UP,I --ignore=E501,S310,S603 .
+        if: ${{ !cancelled() }}
+        run: ruff check --select=S,F,E,W,UP,I --ignore=E501,S310,S603 .
       - name: bandit (SAST)
-        run: pip install bandit==1.7.9 && bandit -r plugins/tileward-guard/hooks/ tests/exit_codes.py -c bandit.yaml
+        if: ${{ !cancelled() }}
+        run: bandit -r plugins/tileward-guard/hooks/ tests/exit_codes.py tests/manifest_schema.py -c bandit.yaml
       - name: mypy (static type checking)
-        run: pip install mypy==1.11.0 && mypy plugins/tileward-guard/hooks/ tests/exit_codes.py
+        if: ${{ !cancelled() }}
+        run: mypy plugins/tileward-guard/hooks/ tests/exit_codes.py tests/manifest_schema.py
 
-  sca:
-    name: code scanning
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+      # A marketplace.json that does not parse breaks `plugin marketplace add` for everyone who
+      # has already installed from here, not just new installs. It is the cheapest possible check
+      # and the most expensive thing to get wrong.
+      - name: Every JSON file parses
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'PYEOF'
+          import json, pathlib, sys
+          bad = []
+          for p in sorted(pathlib.Path(".").rglob("*.json")):
+              try:
+                  json.loads(p.read_text())
+              except Exception as e:
+                  bad.append(f"{p}: {e}")
+              else:
+                  print(f"ok    {p}")
+          if bad:
+              print("\n".join(f"FAIL  {b}" for b in bad), file=sys.stderr)
+              sys.exit(1)
+          PYEOF
+      # Parsing is not enough: a manifest can be valid JSON and still name a plugin that is not
+      # there, lose its version, or point a hook at a script that was renamed. The script plants
+      # faults in copies of the real files to prove the schema refuses them.
+      - name: Every manifest matches its schema
+        if: ${{ !cancelled() }}
+        run: python tests/manifest_schema.py
+      # hooks.json invokes the script directly, with no interpreter in front of it. A script that
+      # loses its executable bit in a commit is a hook that cannot start -- which Claude Code reads
+      # as a non-blocking error, so the prompt runs.
+      - name: Hook scripts are executable
+        if: ${{ !cancelled() }}
+        run: |
+          for f in plugins/tileward-guard/hooks/*.py; do
+            test -x "$f" || { echo "FAIL  $f is not executable"; exit 1; }
+            echo "ok    $f"
+          done
+
+      - name: pip-audit
+        if: ${{ !cancelled() }}
+        # --strict: a dependency that cannot be audited fails the step instead of passing unchecked.
+        run: pipx run --spec pip-audit==2.10.1 pip-audit -r requirements.txt --no-deps --disable-pip --strict
 
       - name: semgrep
+        if: ${{ !cancelled() }}
         # Findings go to code scanning instead of failing the build. A scan that cannot run (an
         # unknown rule pack, no network) fails this step, rather than uploading nothing.
         run: >-
@@ -88,37 +141,3 @@ jobs:
         uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd  # v4.38.1
         with:
           sarif_file: semgrep.sarif
-
-  manifests:
-    name: manifests parse
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
-      # A marketplace.json that does not parse breaks `plugin marketplace add` for everyone who
-      # has already installed from here, not just new installs. It is the cheapest possible check
-      # and the most expensive thing to get wrong.
-      - name: Every JSON file parses
-        run: |
-          python - <<'EOF'
-          import json, pathlib, sys
-          bad = []
-          for p in sorted(pathlib.Path(".").rglob("*.json")):
-              try:
-                  json.loads(p.read_text())
-              except Exception as e:
-                  bad.append(f"{p}: {e}")
-              else:
-                  print(f"ok    {p}")
-          if bad:
-              print("\n".join(f"FAIL  {b}" for b in bad), file=sys.stderr)
-              sys.exit(1)
-          EOF
-      # hooks.json invokes the script directly, with no interpreter in front of it. A script that
-      # loses its executable bit in a commit is a hook that cannot start -- which Claude Code reads
-      # as a non-blocking error, so the prompt runs.
-      - name: Hook scripts are executable
-        run: |
-          for f in plugins/tileward-guard/hooks/*.py; do
-            test -x "$f" || { echo "FAIL  $f is not executable"; exit 1; }
-            echo "ok    $f"
-          done
