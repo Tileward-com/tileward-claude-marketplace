@@ -28,12 +28,15 @@ upgrades is the person whose prompts stop going through.
 
 ## Cutting a release
 
-The working tree must be clean; the tag is created at `HEAD`. Run the fail-closed sweep first. CI
-runs it on every push, but a tag is a receipt for one specific commit, and you want the answer
-before you write the receipt:
+The working tree must be clean; the tag is created at `HEAD`. Run the fail-closed sweep and the
+manifest check first. CI runs both on every push, but a tag is a receipt for one specific commit,
+and you want the answer before you write the receipt. The manifest check fails a marketplace entry
+that carries a `version`; it cannot tell whether the number in the manifest is the right one. It
+needs the one dependency in `requirements.txt`:
 
 ```bash
 python3 tests/exit_codes.py
+pip install -r requirements.txt && python3 tests/manifest_schema.py
 ```
 
 ```bash
