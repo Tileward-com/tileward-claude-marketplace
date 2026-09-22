@@ -127,10 +127,18 @@ def _validate_api(url: str) -> str:
     Runs at module-level import time, so it cannot call `block()` which is
     defined later.  A bad URL falls back to the known-good default.
     """
-    parsed = urllib.parse.urlparse(url)
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname or ""
+    except ValueError:
+        # urlparse raises on a malformed bracketed host (`https://[`, `https://[::1`). This runs
+        # outside the try/except around main(), so the exception would escape as a traceback and
+        # exit 1, which Claude Code reads as a non-blocking error: the tool call would run. An
+        # address we cannot parse is an address we cannot use, so it gets the same answer as the
+        # two below.
+        return "https://api.tileward.com/v1/guard/tool"
     if parsed.scheme != "https":
         return "https://api.tileward.com/v1/guard/tool"
-    hostname = parsed.hostname or ""
     if hostname not in _ALLOWED_HOSTS:
         return "https://api.tileward.com/v1/guard/tool"
     return url
