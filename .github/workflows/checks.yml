@@ -16,6 +16,7 @@ name: checks
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
     inputs: {}  # explicit empty inputs to document that no inputs are expected
 
@@ -24,9 +25,10 @@ permissions:
   security-events: write
 
 concurrency:
-  # Runs on main are never cancelled: every commit there keeps a result of its own.
+  # A newer push to a pull request makes the run for its older commit moot. Runs on main are never
+  # cancelled: every commit there keeps a result of its own.
   group: checks-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # One job rather than one per concern. Each check here is seconds of work, and every job pays for
@@ -127,7 +129,15 @@ jobs:
           --metrics=off --sarif-output=semgrep.sarif
 
       - name: Upload SARIF results
-        if: ${{ !cancelled() && hashFiles('semgrep.sarif') != '' }}
+        # Fork and Dependabot pull requests run with a read-only token, which cannot upload.
+        if: >-
+          ${{
+            !cancelled()
+            && hashFiles('semgrep.sarif') != ''
+            && (github.event_name != 'pull_request'
+              || (github.event.pull_request.head.repo.full_name == github.repository
+                && github.actor != 'dependabot[bot]'))
+          }}
         uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd  # v4.38.1
         with:
           sarif_file: semgrep.sarif

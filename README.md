@@ -432,7 +432,7 @@ of them lands on the exit code that would let the prompt through:
 python3 tests/exit_codes.py
 ```
 
-`.github/workflows/checks.yml` runs it on every push to main, against Python 3.9, 3.11 and
+`.github/workflows/checks.yml` runs it on every push and pull request, against Python 3.9, 3.11 and
 3.13, because `#!/usr/bin/env python3` means the interpreter is whatever the governed machine
 happens to have.
 
