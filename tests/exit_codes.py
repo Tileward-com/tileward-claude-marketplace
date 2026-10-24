@@ -12,19 +12,14 @@ raised ValueError and exited 1. An empty value reaches here the ordinary way: an
 nothing after it, an empty entry in a managed-settings env block, a CI variable declared and never
 given a value.
 
-OFFLINE ON PURPOSE. The hooks only ever talk to api.tileward.com: both replace any endpoint that is
-not https on that host with it, so the sweep cannot point them anywhere else and does not try. It
-stops them on this machine instead. Every subprocess gets `https_proxy` set to a closed loopback
-port, urllib sends an https request through that proxy, and the connection is refused before the
-request is written. So the sweep needs no network, no real API key and no policy, and it cannot be
-turned green by a service that happens to be reachable. Connection refused IS the case under test:
-it is what an outage looks like from here, and the correct answer to it is 2.
+The endpoint variables carried the same flaw. Both scripts check TILEWARD_API and TILEWARD_TOOL_API
+with urlparse at import time, and a malformed bracketed host such as `https://[` made urlparse raise
+ValueError and the script exit 1.
 
-The exit codes cannot show any of that: a live API answering 401 and a refused connection are both
-a 2. So it is checked directly. Each hook runs under an audit hook that records every name lookup
-and connection and refuses any that is not the dead proxy, a case that attempts one fails, and so
-does a sweep in which no case was seen reaching the proxy at all, because a check that observed
-nothing would pass everything.
+HERMETIC ON PURPOSE. Every case that gets far enough to make a request points at a closed loopback
+port, so the sweep needs no network, no API key and no policy, and it cannot be turned green by a
+service that happens to be reachable. Connection refused IS the case under test: it is what an
+outage looks like from here, and the correct answer to it is 2.
 
     python3 tests/exit_codes.py        # prints one line per case, exits 1 on any failure
 
@@ -125,6 +120,20 @@ finally:
     print("NETWORK " + json.dumps(seen), file=sys.stderr)
 """
 REPORT = re.compile(r"^NETWORK (\{.*\})\n?", re.MULTILINE)
+
+# The endpoint variables get the same treatment. Each script runs its endpoint through urlparse at
+# import time, outside the try/except around main(), and urlparse raises ValueError on a malformed
+# bracketed host. The first four values below do that. The last three parse without complaint and
+# are here so the line between the two cannot move unnoticed: the first of them is one `.port` read
+# away from raising. A script that cannot use its endpoint falls back to its default, where the
+# sweep gets no decision, so the answer to every one of them is BLOCK.
+ENDPOINTS = ["https://[", "http://[", "https://[::1", "https://[foo]/",
+             "https://api.tileward.com:99999/", "not a url", ""]
+for endpoint in ENDPOINTS:
+    CASES.append((f"guard: TILEWARD_API={endpoint!r}", GUARD, PROMPT,
+                  GUARD_ENV | {"TILEWARD_API": endpoint}, BLOCK))
+    CASES.append((f"tool: TILEWARD_TOOL_API={endpoint!r}", PRETOOL, TOOL,
+                  TOOL_ENV | {"TILEWARD_TOOL_API": endpoint}, BLOCK))
 
 
 def run(script: pathlib.Path, stdin: str,

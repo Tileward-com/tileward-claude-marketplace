@@ -1,0 +1,9 @@
+# Used by CI and by whoever runs tests/manifest_schema.py. Nothing here ships with a plugin.
+#
+# The hooks under plugins/ import only the standard library and must stay that way: hooks.json runs
+# a bare `python3` with no install step, and an ImportError exits 1, which Claude Code treats as a
+# non-blocking error, so a hook that cannot start lets the prompt through. This file sits at the
+# repository root, outside every plugin directory, so it is never installed with one.
+#
+# Exact pin: pip-audit checks it as written.
+voluptuous==0.16.0
