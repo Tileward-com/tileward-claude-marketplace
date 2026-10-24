@@ -364,9 +364,10 @@ logs it, and runs the prompt anyway. For a gate that makes exit 1 a *silent allo
 failure: it stops gating while remaining installed, enabled and apparently healthy.
 
 `tests/exit_codes.py` sweeps every failure path in both scripts and asserts none of them lands on
-1. It needs no network, no key and no policy -- every case that gets far enough to make a request
-points at a closed loopback port, because connection refused is what an outage looks like from
-here and the correct answer to it is 2.
+1. It needs no network, no key and no policy -- every request is routed to a closed loopback port
+instead of the network, so it is refused on the machine running the sweep, and the sweep fails if
+anything is looked up or connected to anywhere else. Connection refused is what an outage looks
+like from here, and the correct answer to it is 2.
 
 ```bash
 python3 tests/exit_codes.py
